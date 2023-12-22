@@ -28,6 +28,14 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.evaluation import Episode, RolloutWorker
+from ray.rllib.env import BaseEnv
+from ray.rllib.policy import Policy
+import  numpy as np
+
+from typing import Dict, Tuple
+
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
@@ -56,6 +64,49 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
+class mycallback(DefaultCallbacks):
+    def on_episode_start(
+        self,
+        *,
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        print("episode {} started".format(episode.episode_id))
+        episode.user_data["lzq"] = []
+
+    def on_episode_step(
+        self,
+        *,
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        data=1
+        episode.user_data["lzq"].append(data)
+
+    def on_episode_end(
+        self,
+        *,
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        pole_angle = np.mean(episode.user_data["lzq"])
+        episode.custom_metrics["lzq"] = pole_angle
+
+
+
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -111,6 +162,7 @@ if __name__ == "__main__":
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .callbacks(mycallback)
     )
 
     stop = {
@@ -124,7 +176,7 @@ if __name__ == "__main__":
         param_space=config.to_dict(),
         run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
-
+    print(results.get_best_result().metrics)
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
     ray.shutdown()

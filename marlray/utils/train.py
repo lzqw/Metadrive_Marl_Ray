@@ -75,9 +75,9 @@ def train(
     progress_reporter.add_metric_column("takeover")
     progress_reporter.add_metric_column("rc")
     kwargs["progress_reporter"] = progress_reporter
-
+    print(config)
     # start training
-    analysis = tune.run(
+    result = tune.run(
         trainer,
         name=exp_name,
         checkpoint_freq=checkpoint_freq,
@@ -94,7 +94,7 @@ def train(
     if save_pkl:
         pkl_path = "{}-{}{}.pkl".format(exp_name, trainer_name, "" if not suffix else "-" + suffix)
         with open(pkl_path, "wb") as f:
-            data = analysis.trial_dataframes
+            data = result.trial_dataframes
             pickle.dump(data, f)
             print("Result is saved at: <{}>".format(pkl_path))
-    return analysis
+    return result

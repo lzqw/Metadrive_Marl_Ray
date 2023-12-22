@@ -82,6 +82,7 @@ class MultiAgentDrivingCallbacks(DefaultCallbacks):
 
         # Newly introduced metrics
         episode.custom_metrics["track_length"] = np.mean(track_length_list)
+        # print(episode.custom_metrics["track_length"])
         episode.custom_metrics["current_distance"] = np.mean(current_distance_list)
         episode.custom_metrics["route_completion"] = np.mean(route_completion_list)
 

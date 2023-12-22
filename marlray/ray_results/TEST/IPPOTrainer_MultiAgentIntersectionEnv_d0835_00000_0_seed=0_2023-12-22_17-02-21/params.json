@@ -1,0 +1,13 @@
+{
+  "callbacks": "<class 'marlray.utils.callbacks.MultiAgentDrivingCallbacks'>",
+  "env": "MultiAgentIntersectionEnv",
+  "env_config": {
+    "num_agents": 20
+  },
+  "log_level": "DEBUG",
+  "num_gpus": 1,
+  "num_rollout_workers": 1,
+  "seed": 0,
+  "train_batch_size": 2000,
+  "vf_clip_param": 20
+}

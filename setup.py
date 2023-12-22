@@ -13,7 +13,8 @@ setup(
     "tensorboardX==2.6.2.2",
     "seaborn==0.13.0",
     "tqdm==4.66.1",
-    "panda3d-simplepbr=0.11.2"
+    "panda3d-simplepbr=0.11.2",
+    "tensorboard"
     ],
     license="Apache 2.0",
 )

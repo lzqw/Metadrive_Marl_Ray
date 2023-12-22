@@ -22,16 +22,29 @@ if __name__ == "__main__":
     config = dict(
         # ===== Environmental Setting =====
         # We can grid-search the environmental parameters!
-        env=get_rllib_compatible_env(MultiAgentIntersectionEnv),
+        # env=tune.grid_search(
+        #     [
+        #         get_rllib_compatible_env(MultiAgentParkingLotEnv),
+        #         get_rllib_compatible_env(MultiAgentRoundaboutEnv),
+        #         get_rllib_compatible_env(MultiAgentTollgateEnv),
+        #         get_rllib_compatible_env(MultiAgentBottleneckEnv),
+        #         get_rllib_compatible_env(MultiAgentIntersectionEnv),
+        #         get_rllib_compatible_env(MultiAgentMetaDrive)
+        #     ]
+        # ),
+        env=
+                get_rllib_compatible_env(MultiAgentIntersectionEnv),
+
         env_config={
             "num_agents":args.num_agents,
         },
         # ===== Resource =====
         # So we need 2 CPUs per trial, 0.25 GPU per trial!
-        num_gpus=args.num_gpus if args.num_gpus != 0 else 0,
-        vf_clip_param=20,
+        num_gpus=0.25 if args.num_gpus != 0 else 0,
         train_batch_size=args.train_batch_size,
         num_rollout_workers=args.workers,
+        vf_clip_param=tune.grid_search([10, 20, 50, 100, 1000])
+        # vf_clip_param=20
     )
 
 
