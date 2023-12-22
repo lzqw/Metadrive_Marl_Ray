@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: marlray
+Version: 0.0.0
+License: Apache 2.0
+Requires-Dist: ray==2.9.0
