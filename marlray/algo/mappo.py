@@ -4,7 +4,7 @@ import gymnasium as gym
 import numpy as np
 from marlray.algo.ippo import IPPOTrainer, IPPOConfig
 from marlray.utils.callbacks import MultiAgentDrivingCallbacks
-from marlray.utils.env_wrappers import get_rllib_compatible_env
+from marlray.utils.env_wrappers import get_rllib_compatible_env, get_ccenv, get_rllib_compatible_env_cc
 from marlray.utils.train import train
 from marlray.utils.utils import get_train_parser
 from gymnasium.spaces import Box
@@ -225,8 +225,23 @@ ModelCatalog.register_custom_model("cc_model", CCModel)
 
 def concat_mappo_process(policy, sample_batch, other_agent_batches, odim, adim, other_info_dim):
     """Concat the neighbors' observations"""
+    # print("========================================")
+    # print(sample_batch.count)
+    # print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    # print(sample_batch)
+    # print("-----------------------")
+    # print(sample_batch['infos'])
     for index in range(sample_batch.count):
+
+        # print("=====================",index)
+        # print(sample_batch['infos'][index])
         environmental_time_step = sample_batch["t"][index]
+        # if "neighbours" not in sample_batch['infos'][index]:
+        #     print("=============!!!!!!!!!!!!!!!!!!!!!!!!!1=====================================")
+        #     print(sample_batch['infos'][index])
+        # else:
+        #     print("------------------------------------------------")
+        #     print(sample_batch['infos'][index]['all_agents'])
         neighbours = sample_batch['infos'][index]["neighbours"]
 
         # Note that neighbours returned by the environment are already sorted based on their
@@ -238,7 +253,9 @@ def concat_mappo_process(policy, sample_batch, other_agent_batches, odim, adim, 
             nei_act = None
             nei_obs = None
             if nei_name in other_agent_batches:
-                _, nei_batch = other_agent_batches[nei_name]
+                # print(nei_name,"=-====================================")
+                # print("testetstettet:",other_agent_batches[nei_name])
+                _,_, nei_batch = other_agent_batches[nei_name]
 
                 match_its_step = np.where(nei_batch["t"] == environmental_time_step)[0]
 
@@ -284,7 +301,7 @@ def mean_field_mappo_process(policy, sample_batch, other_agent_batches, odim, ad
             nei_act = None
             nei_obs = None
             if nei_name in other_agent_batches:
-                _, nei_batch = other_agent_batches[nei_name]
+                _,_, nei_batch = other_agent_batches[nei_name]
 
                 match_its_step = np.where(nei_batch["t"] == environmental_time_step)[0]
 
@@ -310,4 +327,170 @@ def mean_field_mappo_process(policy, sample_batch, other_agent_batches, odim, ad
 
 
 def get_mappo_env(env_class):
-    return get_rllib_compatible_env(get_maenv(env_class))
+    return get_rllib_compatible_env_cc(get_ccenv(env_class))
+
+class MAPPOPolicy(PPOTorchPolicy):
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
+        return {}
+
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
+        with torch.no_grad():
+            o = sample_batch[SampleBatch.CUR_OBS]
+            odim = o.shape[1]
+
+            if episode is None:
+                # In initialization, we set centralized_critic_obs_dim
+                self.centralized_critic_obs_dim = sample_batch[CENTRALIZED_CRITIC_OBS].shape[1]
+            else:
+                # After initialization, fill centralized obs
+                sample_batch[CENTRALIZED_CRITIC_OBS] = np.zeros(
+                    (o.shape[0], self.centralized_critic_obs_dim), dtype=sample_batch[SampleBatch.CUR_OBS].dtype
+                )
+                sample_batch[CENTRALIZED_CRITIC_OBS][:, :odim] = o
+
+                assert other_agent_batches is not None
+                other_info_dim = odim
+                adim = sample_batch[SampleBatch.ACTIONS].shape[1]
+                if self.config[COUNTERFACTUAL]:
+                    other_info_dim += adim
+                if self.config["fuse_mode"] == "concat":
+                    sample_batch = concat_mappo_process(
+                        self, sample_batch, other_agent_batches, odim, adim, other_info_dim
+                    )
+                elif self.config["fuse_mode"] == "mf":
+                    sample_batch = mean_field_mappo_process(
+                        self, sample_batch, other_agent_batches, odim, adim, other_info_dim
+                    )
+                elif self.config["fuse_mode"] == "none":
+                    # Do nothing since OBS is already filled
+                    assert odim == sample_batch[CENTRALIZED_CRITIC_OBS].shape[1]
+                else:
+                    raise ValueError("Unknown fuse mode: {}".format(self.config["fuse_mode"]))
+
+            # Use centralized critic to compute the value
+            sample_batch[SampleBatch.VF_PREDS] = self.model.central_value_function(
+                convert_to_torch_tensor(sample_batch[CENTRALIZED_CRITIC_OBS], self.device)
+            ).cpu().detach().numpy().astype(np.float32)
+
+            if sample_batch[SampleBatch.DONES][-1]:
+                last_r = 0.0
+            else:
+                last_r = sample_batch[SampleBatch.VF_PREDS][-1]
+            batch = compute_advantages(
+                sample_batch,
+                last_r,
+                self.config["gamma"],
+                self.config["lambda"],
+                use_gae=self.config["use_gae"],
+                use_critic=self.config.get("use_critic", True)
+            )
+        return batch
+
+    def loss(self, model, dist_class, train_batch):
+        """
+        Compute loss for Proximal Policy Objective.
+
+        PZH: We replace the value function here so that we query the centralized values instead
+        of the native value function.
+        """
+
+        logits, state = model(train_batch)
+        curr_action_dist = dist_class(logits, model)
+
+        # RNN case: Mask away 0-padded chunks at end of time axis.
+        if state:
+            B = len(train_batch[SampleBatch.SEQ_LENS])
+            max_seq_len = logits.shape[0] // B
+            mask = sequence_mask(
+                train_batch[SampleBatch.SEQ_LENS],
+                max_seq_len,
+                time_major=model.is_time_major(),
+            )
+            mask = torch.reshape(mask, [-1])
+            num_valid = torch.sum(mask)
+
+            def reduce_mean_valid(t):
+                return torch.sum(t[mask]) / num_valid
+
+        # non-RNN case: No masking.
+        else:
+            mask = None
+            reduce_mean_valid = torch.mean
+
+        prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
+
+        logp_ratio = torch.exp(
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) - train_batch[SampleBatch.ACTION_LOGP]
+        )
+
+        # Only calculate kl loss if necessary (kl-coeff > 0.0).
+        if self.config["kl_coeff"] > 0.0:
+            action_kl = prev_action_dist.kl(curr_action_dist)
+            mean_kl_loss = reduce_mean_valid(action_kl)
+            warn_if_infinite_kl_divergence(self, mean_kl_loss)
+        else:
+            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
+
+        curr_entropy = curr_action_dist.entropy()
+        mean_entropy = reduce_mean_valid(curr_entropy)
+
+        surrogate_loss = torch.min(
+            train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+            train_batch[Postprocessing.ADVANTAGES] *
+            torch.clamp(logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]),
+        )
+
+        # Compute a value function loss.
+        assert self.config["use_critic"]
+
+        # ========== Modification ==========
+        # value_fn_out = model.value_function()
+        value_fn_out = self.model.central_value_function(train_batch[CENTRALIZED_CRITIC_OBS])
+        # ========== Modification Ends ==========
+
+        if self.config["old_value_loss"]:
+            current_vf = value_fn_out
+            prev_vf = train_batch[SampleBatch.VF_PREDS]
+            vf_loss1 = torch.pow(current_vf - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+            vf_clipped = prev_vf + torch.clamp(
+                current_vf - prev_vf, -self.config["vf_clip_param"], self.config["vf_clip_param"]
+            )
+            vf_loss2 = torch.pow(vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+            vf_loss_clipped = torch.max(vf_loss1, vf_loss2)
+        else:
+            vf_loss = torch.pow(value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+            vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
+        mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
+
+        total_loss = reduce_mean_valid(
+            -surrogate_loss + self.config["vf_loss_coeff"] * vf_loss_clipped - self.entropy_coeff * curr_entropy
+        )
+
+        # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+        # if necessary.
+        if self.config["kl_coeff"] > 0.0:
+            total_loss += self.kl_coeff * mean_kl_loss
+
+        # Store values for stats function in model (tower), such that for
+        # multi-GPU, we do not override them during the parallel loss phase.
+        model.tower_stats["total_loss"] = total_loss
+        model.tower_stats["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
+        model.tower_stats["mean_vf_loss"] = mean_vf_loss
+        model.tower_stats["vf_explained_var"] = explained_variance(
+            train_batch[Postprocessing.VALUE_TARGETS], value_fn_out
+        )
+        model.tower_stats["mean_entropy"] = mean_entropy
+        model.tower_stats["mean_kl_loss"] = mean_kl_loss
+
+        return total_loss
+
+
+class MAPPOTrainer(IPPOTrainer):
+    @classmethod
+    def get_default_config(cls):
+        return MAPPOConfig()
+
+    def get_default_policy_class(self, config) -> Type[Policy]:
+        assert config["framework"] == "torch"
+        return MAPPOPolicy
+

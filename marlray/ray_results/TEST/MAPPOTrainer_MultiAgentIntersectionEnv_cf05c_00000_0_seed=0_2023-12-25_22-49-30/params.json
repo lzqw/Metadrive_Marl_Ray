@@ -1,0 +1,10 @@
+{
+  "callbacks": "<class 'marlray.utils.callbacks.MultiAgentDrivingCallbacks'>",
+  "counterfactual": true,
+  "env": "MultiAgentIntersectionEnv",
+  "fuse_mode": "mf",
+  "log_level": "DEBUG",
+  "mf_nei_distance": 10,
+  "num_gpus": 0.25,
+  "seed": 0
+}

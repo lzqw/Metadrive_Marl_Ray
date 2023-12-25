@@ -1,48 +1,32 @@
-"""Simple example of setting up a multi-agent policy mapping.
+"""An example of implementing a centralized critic with ObservationFunction.
 
-Control the number of agents and policies via --num-agents and --num-policies.
+The advantage of this approach is that it's very simple and you don't have to
+change the algorithm at all -- just use callbacks and a custom model.
+However, it is a bit less principled in that you have to change the agent
+observation spaces to include data that is only used at train time.
 
-This works with hundreds of agents and policies, but note that initializing
-many TF policies will take some time.
-
-Also, TF evals might slow down with large numbers of policies. To debug TF
-execution, set the TF_TIMELINE_DIR environment variable.
+See also: centralized_critic.py for an alternative approach that instead
+modifies the policy to add a centralized value function.
 """
 
+import numpy as np
+from gymnasium.spaces import Dict, Discrete
 import argparse
 import os
-import random
 
-import ray
 from ray import air, tune
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.models.shared_weights_model import (
-    SharedWeightsModel1,
-    SharedWeightsModel2,
-    TF2SharedWeightsModel,
-    TorchSharedWeightsModel,
+from ray.rllib.examples.models.centralized_critic_models import (
+    YetAnotherCentralizedCriticModel,
+    YetAnotherTorchCentralizedCriticModel,
 )
+from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
-from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.evaluation import Episode, RolloutWorker
-from ray.rllib.env import BaseEnv
-from ray.rllib.policy import Policy
-import  numpy as np
-
-from typing import Dict, Tuple
-
-tf1, tf, tfv = try_import_tf()
-
 parser = argparse.ArgumentParser()
-
-parser.add_argument("--num-agents", type=int, default=4)
-parser.add_argument("--num-policies", type=int, default=2)
-parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
@@ -56,127 +40,121 @@ parser.add_argument(
     "be achieved within --stop-timesteps AND --stop-iters.",
 )
 parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    "--stop-iters", type=int, default=100, help="Number of iterations to train."
 )
 parser.add_argument(
     "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=7.99, help="Reward at which we stop training."
 )
-class mycallback(DefaultCallbacks):
-    def on_episode_start(
+
+
+class FillInActions(DefaultCallbacks):
+    """Fills in the opponent actions info in the training batches."""
+
+    def on_postprocess_trajectory(
         self,
-        *,
-        worker: RolloutWorker,
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: Episode,
-        env_index: int,
-        **kwargs,
+        worker,
+        episode,
+        agent_id,
+        policy_id,
+        policies,
+        postprocessed_batch,
+        original_batches,
+        **kwargs
     ):
-        print("episode {} started".format(episode.episode_id))
-        episode.user_data["lzq"] = []
+        to_update = postprocessed_batch[SampleBatch.CUR_OBS]
+        other_id = 1 if agent_id == 0 else 0
+        action_encoder = ModelCatalog.get_preprocessor_for_space(Discrete(2))
 
-    def on_episode_step(
-        self,
-        *,
-        worker: RolloutWorker,
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: Episode,
-        env_index: int,
-        **kwargs,
-    ):
-        data=1
-        episode.user_data["lzq"].append(data)
-
-    def on_episode_end(
-        self,
-        *,
-        worker: RolloutWorker,
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: Episode,
-        env_index: int,
-        **kwargs,
-    ):
-        pole_angle = np.mean(episode.user_data["lzq"])
-        episode.custom_metrics["lzq"] = pole_angle
+        # set the opponent actions into the observation
+        _, opponent_batch = original_batches[other_id]
+        opponent_actions = np.array(
+            [action_encoder.transform(a) for a in opponent_batch[SampleBatch.ACTIONS]]
+        )
+        to_update[:, -2:] = opponent_actions
 
 
+def central_critic_observer(agent_obs, **kw):
+    """Rewrites the agent obs to include opponent data for training."""
 
+    new_obs = {
+        0: {
+            "own_obs": agent_obs[0],
+            "opponent_obs": agent_obs[1],
+            "opponent_action": 0,  # filled in by FillInActions
+        },
+        1: {
+            "own_obs": agent_obs[1],
+            "opponent_obs": agent_obs[0],
+            "opponent_action": 0,  # filled in by FillInActions
+        },
+    }
+    return new_obs
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ModelCatalog.register_custom_model(
+        "cc_model",
+        YetAnotherTorchCentralizedCriticModel
+        if args.framework == "torch"
+        else YetAnotherCentralizedCriticModel,
+    )
 
-    # Register the models to use.
-    if args.framework == "torch":
-        mod1 = mod2 = TorchSharedWeightsModel
-    elif args.framework == "tf2":
-        mod1 = mod2 = TF2SharedWeightsModel
-    else:
-        mod1 = SharedWeightsModel1
-        mod2 = SharedWeightsModel2
-    ModelCatalog.register_custom_model("model1", mod1)
-    ModelCatalog.register_custom_model("model2", mod2)
-
-    # Each policy can have a different configuration (including custom model).
-    def gen_policy(i):
-
-        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # just change the gammas between the two policies.
-            # changing the module is not a critical part of this example.
-            # the important part is that the policies are different.
-            config = {
-                "gamma": random.choice([0.95, 0.99]),
-            }
-        else:
-            config = PPOConfig.overrides(
-                model={
-                    "custom_model": ["model1", "model2"][i % 2],
-                },
-                gamma=random.choice([0.95, 0.99]),
-            )
-        return PolicySpec(config=config)
-
-    # Setup PPO with an ensemble of `num_policies` different policies.
-    policies = {"policy_{}".format(i): gen_policy(i) for i in range(args.num_policies)}
-    policy_ids = list(policies.keys())
-
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-        pol_id = random.choice(policy_ids)
-        return pol_id
-    env=MultiAgentCartPole({"num_agents": args.num_agents})
-    print(env.action_space)
-    print(env.action_space.sample())
-    print(env.action_space_sample())
+    action_space = Discrete(2)
+    observer_space = Dict(
+        {
+            "own_obs": Discrete(6),
+            # These two fields are filled in by the CentralCriticObserver, and are
+            # not used for inference, only for training.
+            "opponent_obs": Discrete(6),
+            "opponent_action": Discrete(2),
+        }
+    )
+    env=TwoStepGame({})
     config = (
         PPOConfig()
-        .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
+        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
+        .experimental(_enable_new_api_stack=False)
+        .environment(TwoStepGame)
         .framework(args.framework)
-        .training(num_sgd_iter=10)
-        .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
+        .rollouts(
+            batch_mode="complete_episodes",
+            num_rollout_workers=0,
+            # TODO(avnishn) make a new example compatible w connectors.
+            enable_connectors=False,
+        )
+        .callbacks(FillInActions)
+        .training(model={"custom_model": "cc_model"})
+        .multi_agent(
+            policies={
+                "pol1": (None, observer_space, action_space, {}),
+                "pol2": (None, observer_space, action_space, {}),
+            },
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
+            if agent_id == 0
+            else "pol2",
+            observation_fn=central_critic_observer,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .callbacks(mycallback)
     )
 
     stop = {
-        "episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.Tuner(
+    tuner = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
         run_config=air.RunConfig(stop=stop, verbose=1),
-    ).fit()
-    print(results.get_best_result().metrics)
+    )
+    results = tuner.fit()
+
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
-    ray.shutdown()

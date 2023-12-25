@@ -211,8 +211,8 @@ def get_train_parser():
     parser.add_argument("--num-seeds", type=int, default=3)
     parser.add_argument("--num-cpus-per-worker", type=float, default=1)
     parser.add_argument("--num-gpus-per-trial", type=float, default=1)
-    parser.add_argument("--test", type=bool, default=False)
-    parser.add_argument("--workers",type=int,default=1)
+    parser.add_argument("--test", type=bool, default=True)
+    parser.add_argument("--workers",type=int,default=5)
     parser.add_argument("--train_batch_size",type=int,default=2000)
     parser.add_argument("--num_agents",type=int,default=20)
     return parser
