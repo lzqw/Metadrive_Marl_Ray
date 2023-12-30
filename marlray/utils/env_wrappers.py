@@ -76,6 +76,7 @@ class CCEnv:
             neighbours, nei_distances = self._find_in_range(kkk, self.config["neighbours_distance"])
             i[kkk]["neighbours"] = neighbours
             i[kkk]["neighbours_distance"] = nei_distances
+        # print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         return (obs,i)
 
@@ -363,13 +364,13 @@ if __name__ == '__main__':
     from metadrive.envs.marl_envs import MultiAgentIntersectionEnv
 
     name,my_env=get_rllib_compatible_env_cc(get_ccenv(MultiAgentIntersectionEnv), True)
-    env=my_env({"num_agents": 4})
-    print(env.reset()[1])
+    env=my_env({"num_agents": 2})
+    print(env.reset())
     for i in range(10000):
         o, r, tm, tc, info = env.step({agent_id: [0, 0] for agent_id in env.vehicles.keys()})
         if tm["__all__"]:
             print("=============================")
-            print(env.reset()[1])
+            print(env.reset())
     # print("===============ooooooooooo===================")
     # print(o)
     # print("==========================info=========================")

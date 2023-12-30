@@ -1,0 +1,37 @@
+Failure # 1 (occurred at 2023-12-26_20-35-33)
+The actor died because of an error raised in its creation task, [36mray::MAPPOTrainer.__init__()[39m (pid=7188, ip=172.26.117.73, actor_id=f0f1c492b4891758490a5fdc01000000, repr=MAPPOTrainer)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/worker_set.py", line 229, in _setup
+    self.add_workers(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/worker_set.py", line 616, in add_workers
+    raise result.get()
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/utils/actor_manager.py", line 487, in __fetch_result
+    result = ray.get(r)
+ray.exceptions.RayActorError: The actor died because of an error raised in its creation task, [36mray::RolloutWorker.__init__()[39m (pid=7239, ip=172.26.117.73, actor_id=6383dbc09671facc21845c6001000000, repr=<ray.rllib.evaluation.rollout_worker.RolloutWorker object at 0x7fa31a851610>)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/rollout_worker.py", line 535, in __init__
+    self._update_policy_map(policy_dict=self.policy_dict)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/rollout_worker.py", line 1746, in _update_policy_map
+    self._build_policy_map(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/rollout_worker.py", line 1857, in _build_policy_map
+    new_policy = create_policy_for_framework(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/utils/policy.py", line 141, in create_policy_for_framework
+    return policy_class(observation_space, action_space, merged_config)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/algorithms/ppo/ppo_torch_policy.py", line 64, in __init__
+    self._initialize_loss_from_dummy_batch()
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/policy/policy.py", line 1479, in _initialize_loss_from_dummy_batch
+    postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
+  File "/home/lzqw/PycharmProjects/Metadrive_Marl_Ray/marlray/algo/mappo.py", line 347, in postprocess_trajectory
+    (o.shape[0], self.centralized_critic_obs_dim), dtype=sample_batch[SampleBatch.CUR_OBS].dtype
+AttributeError: 'MAPPOPolicy' object has no attribute 'centralized_critic_obs_dim'
+
+During handling of the above exception, another exception occurred:
+
+[36mray::MAPPOTrainer.__init__()[39m (pid=7188, ip=172.26.117.73, actor_id=f0f1c492b4891758490a5fdc01000000, repr=MAPPOTrainer)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/algorithms/algorithm.py", line 516, in __init__
+    super().__init__(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/tune/trainable/trainable.py", line 161, in __init__
+    self.setup(copy.deepcopy(self.config))
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/algorithms/algorithm.py", line 638, in setup
+    self.workers = WorkerSet(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/worker_set.py", line 181, in __init__
+    raise e.args[0].args[2]
+AttributeError: 'MAPPOPolicy' object has no attribute 'centralized_critic_obs_dim'

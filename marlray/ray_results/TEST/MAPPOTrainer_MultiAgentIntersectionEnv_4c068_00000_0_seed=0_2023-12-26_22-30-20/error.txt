@@ -1,0 +1,46 @@
+Failure # 1 (occurred at 2023-12-26_22-30-45)
+[36mray::MAPPOTrainer.train()[39m (pid=49801, ip=172.26.117.73, actor_id=77b655fbf937eca8a8d7ab2201000000, repr=MAPPOTrainer)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/tune/trainable/trainable.py", line 342, in train
+    raise skipped from exception_cause(skipped)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/tune/trainable/trainable.py", line 339, in train
+    result = self.step()
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/algorithms/algorithm.py", line 852, in step
+    results, train_iter_ctx = self._run_one_training_iteration()
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/algorithms/algorithm.py", line 3042, in _run_one_training_iteration
+    results = self.training_step()
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/algorithms/ppo/ppo.py", line 407, in training_step
+    train_batch = synchronous_parallel_sample(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/execution/rollout_ops.py", line 83, in synchronous_parallel_sample
+    sample_batches = worker_set.foreach_worker(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/worker_set.py", line 705, in foreach_worker
+    handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/worker_set.py", line 78, in handle_remote_call_result_errors
+    raise r.get()
+ray.exceptions.RayTaskError(KeyError): [36mray::RolloutWorker.apply()[39m (pid=49849, ip=172.26.117.73, actor_id=3f77351c94cd1905a35f1bc701000000, repr=<ray.rllib.evaluation.rollout_worker.RolloutWorker object at 0x7f09c90ff580>)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/utils/actor_manager.py", line 189, in apply
+    raise e
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/utils/actor_manager.py", line 178, in apply
+    return func(self, *args, **kwargs)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/execution/rollout_ops.py", line 84, in <lambda>
+    lambda w: w.sample(), local_worker=False, healthy_only=True
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/rollout_worker.py", line 694, in sample
+    batches = [self.input_reader.next()]
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/sampler.py", line 91, in next
+    batches = [self.get_data()]
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/sampler.py", line 276, in get_data
+    item = next(self._env_runner)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/env_runner_v2.py", line 344, in run
+    outputs = self.step()
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/env_runner_v2.py", line 373, in step
+    active_envs, to_eval, outputs = self._process_observations(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/env_runner_v2.py", line 701, in _process_observations
+    sample_batch = self._try_build_truncated_episode_multi_agent_batch(
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/env_runner_v2.py", line 1003, in _try_build_truncated_episode_multi_agent_batch
+    episode.postprocess_episode(batch_builder=batch_builder, is_done=False)
+  File "/home/lzqw/anaconda3/envs/metadrive_ray_lzq/lib/python3.9/site-packages/ray/rllib/evaluation/episode_v2.py", line 325, in postprocess_episode
+    post_batch = policy.postprocess_trajectory(post_batch, other_batches, self)
+  File "/home/lzqw/PycharmProjects/Metadrive_Marl_Ray/marlray/algo/mappo.py", line 357, in postprocess_trajectory
+    sample_batch = concat_mappo_process(
+  File "/home/lzqw/PycharmProjects/Metadrive_Marl_Ray/marlray/algo/mappo.py", line 245, in concat_mappo_process
+    neighbours = sample_batch['infos'][index]["neighbours"]
+KeyError: 'neighbours'

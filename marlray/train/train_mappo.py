@@ -16,12 +16,12 @@ if __name__ == "__main__":
         # ===== Environmental Setting =====
         # We can grid-search the environmental parameters!
         env=get_mappo_env(MultiAgentIntersectionEnv),
-        env_config={"num_agents": 2},
+        env_config={"num_agents": 20},
         num_gpus=1 if args.num_gpus != 0 else 0,
 
         # ===== MAPPO =====
         counterfactual=True,
-        fuse_mode="concat",
+        fuse_mode="mf",
         mf_nei_distance=10,
     )
     train(

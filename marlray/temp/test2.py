@@ -115,46 +115,47 @@ if __name__ == "__main__":
         }
     )
     env=TwoStepGame({})
-    config = (
-        PPOConfig()
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .experimental(_enable_new_api_stack=False)
-        .environment(TwoStepGame)
-        .framework(args.framework)
-        .rollouts(
-            batch_mode="complete_episodes",
-            num_rollout_workers=0,
-            # TODO(avnishn) make a new example compatible w connectors.
-            enable_connectors=False,
-        )
-        .callbacks(FillInActions)
-        .training(model={"custom_model": "cc_model"})
-        .multi_agent(
-            policies={
-                "pol1": (None, observer_space, action_space, {}),
-                "pol2": (None, observer_space, action_space, {}),
-            },
-            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
-            if agent_id == 0
-            else "pol2",
-            observation_fn=central_critic_observer,
-        )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-    )
-
-    stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
-    }
-
-    tuner = tune.Tuner(
-        "PPO",
-        param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
-    )
-    results = tuner.fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
+    print(env.reset())
+    # config = (
+    #     PPOConfig()
+    #     # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
+    #     .experimental(_enable_new_api_stack=False)
+    #     .environment(TwoStepGame)
+    #     .framework(args.framework)
+    #     .rollouts(
+    #         batch_mode="complete_episodes",
+    #         num_rollout_workers=0,
+    #         # TODO(avnishn) make a new example compatible w connectors.
+    #         enable_connectors=False,
+    #     )
+    #     .callbacks(FillInActions)
+    #     .training(model={"custom_model": "cc_model"})
+    #     .multi_agent(
+    #         policies={
+    #             "pol1": (None, observer_space, action_space, {}),
+    #             "pol2": (None, observer_space, action_space, {}),
+    #         },
+    #         policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
+    #         if agent_id == 0
+    #         else "pol2",
+    #         observation_fn=central_critic_observer,
+    #     )
+    #     # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+    #     .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    # )
+    #
+    # stop = {
+    #     "training_iteration": args.stop_iters,
+    #     "timesteps_total": args.stop_timesteps,
+    #     "episode_reward_mean": args.stop_reward,
+    # }
+    #
+    # tuner = tune.Tuner(
+    #     "PPO",
+    #     param_space=config.to_dict(),
+    #     run_config=air.RunConfig(stop=stop, verbose=1),
+    # )
+    # results = tuner.fit()
+    #
+    # if args.as_test:
+    #     check_learning_achieved(results, args.stop_reward)

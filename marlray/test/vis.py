@@ -24,7 +24,7 @@ def get_env(env_name, use_native_render=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", default="inter", type=str)
-    parser.add_argument("--use_native_render", type=bool, default=False)
+    parser.add_argument("--use_native_render", type=bool, default=True)
     parser.add_argument("--use_3d_render", action="store_true")
     args = parser.parse_args()
     config = dict(

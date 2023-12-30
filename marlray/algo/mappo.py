@@ -1,3 +1,4 @@
+import random
 from typing import Type
 
 import gymnasium as gym
@@ -39,7 +40,7 @@ class MAPPOConfig(IPPOConfig):
         super().__init__(algo_class=algo_class or MAPPOConfig)
         self.counterfactual = True
         self.num_neighbours = 4
-        self.fuse_mode = "mf"  # In ["concat", "mf", "none"]
+        self.fuse_mode = "concat"  # In ["concat", "mf", "none"]
         self.mf_nei_distance = 10
         self.old_value_loss = True
         self.update_from_dict({"model": {"custom_model": "cc_model"}})
@@ -232,9 +233,9 @@ def concat_mappo_process(policy, sample_batch, other_agent_batches, odim, adim, 
     # print("-----------------------")
     # print(sample_batch['infos'])
     for index in range(sample_batch.count):
-
-        # print("=====================",index)
-        # print(sample_batch['infos'][index])
+        if 'neighbours' not in sample_batch['infos'][index]:
+            id = random.sample(list(sample_batch['infos'][index][0]), 1)
+            sample_batch['infos'][index]=sample_batch['infos'][index][0][id]
         environmental_time_step = sample_batch["t"][index]
         # if "neighbours" not in sample_batch['infos'][index]:
         #     print("=============!!!!!!!!!!!!!!!!!!!!!!!!!1=====================================")
@@ -285,7 +286,9 @@ def mean_field_mappo_process(policy, sample_batch, other_agent_batches, odim, ad
 
     assert odim + other_info_dim == sample_batch[CENTRALIZED_CRITIC_OBS].shape[1]
     for index in range(sample_batch.count):
-
+        if 'neighbours' not in sample_batch['infos'][index]:
+            id = random.sample(list(sample_batch['infos'][index][0]), 1)
+            sample_batch['infos'][index]=sample_batch['infos'][index][0]['agent0']
         environmental_time_step = sample_batch["t"][index]
 
         neighbours = sample_batch['infos'][index]["neighbours"]
@@ -335,7 +338,26 @@ class MAPPOPolicy(PPOTorchPolicy):
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
         with torch.no_grad():
+            #print(sample_batch)
+            """
+            SampleBatch(200: ['obs', 'actions', 'rewards', 'terminateds', 
+            'truncateds', 'infos', 'eps_id', 'unroll_id', 'agent_index', 't', 'action_dist_inputs'
+            , 'action_logp'])
+            """
+            #print("cur_OBS",SampleBatch.CUR_OBS)
+            #cur_OBS obs
             o = sample_batch[SampleBatch.CUR_OBS]
+            #print("oshape",o.shape)
+            #oshape (97, 91)
+            #print('ooooo',o)
+            """
+                (RolloutWorker pid=373842) ooooo [[0.07478527 0.3141036  0.40917644 ... 1.         1.         1.        ]
+                (RolloutWorker pid=373842)  [0.07489155 0.31399733 0.4097194  ... 1.         1.         1.        ]
+                (RolloutWorker pid=373842)  [0.0749112  0.3139777  0.40981612 ... 1.         1.         1.        ]
+                (RolloutWorker pid=373842)  [0.06121929 0.3276696  0.39321685 ... 1.         1.         1.        ]
+                (RolloutWorker pid=373842)  [0.05919737 0.32969153 0.38641855 ... 1.         1.         1.        ]
+                (RolloutWorker pid=373842)  [0.05673864 0.33215025 0.37811443 ... 1.         1.         1.        ]]
+            """
             odim = o.shape[1]
 
             if episode is None:
@@ -366,12 +388,10 @@ class MAPPOPolicy(PPOTorchPolicy):
                     assert odim == sample_batch[CENTRALIZED_CRITIC_OBS].shape[1]
                 else:
                     raise ValueError("Unknown fuse mode: {}".format(self.config["fuse_mode"]))
-
             # Use centralized critic to compute the value
             sample_batch[SampleBatch.VF_PREDS] = self.model.central_value_function(
                 convert_to_torch_tensor(sample_batch[CENTRALIZED_CRITIC_OBS], self.device)
             ).cpu().detach().numpy().astype(np.float32)
-
             if sample_batch[SampleBatch.DONES][-1]:
                 last_r = 0.0
             else:
@@ -384,6 +404,7 @@ class MAPPOPolicy(PPOTorchPolicy):
                 use_gae=self.config["use_gae"],
                 use_critic=self.config.get("use_critic", True)
             )
+            print(batch)
         return batch
 
     def loss(self, model, dist_class, train_batch):
@@ -493,4 +514,3 @@ class MAPPOTrainer(IPPOTrainer):
     def get_default_policy_class(self, config) -> Type[Policy]:
         assert config["framework"] == "torch"
         return MAPPOPolicy
-
